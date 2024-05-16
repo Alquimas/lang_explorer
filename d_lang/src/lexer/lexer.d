@@ -3,12 +3,11 @@ module lexer.lexer;
 import lexer.token;
 import errors.errors;
 
-
 /**
- * The lexer class. It receives input as string and convert
+ * The lexer class. It receives a string as input and convert
  * it to a array of tokens using the lexInput() method.
  * Params:
- *  _source = the input to be lexed.
+ *  _source = a string with the input to be lexed.
  */
 class Lexer {
     private string _source;
@@ -22,34 +21,45 @@ class Lexer {
     }
 
     /**
-     * The lexer main function. Generates a array of Tokens
+     * The lexer main function. Generates a array of Tokens from a source file.
      * Returns:
      *  A Array of lexed tokens.
      * Throws:
-     *  <b>RuntimeError</b> if it finds a character than cant be lexed.
+     *  <b>LexingError</b> if it finds a character than cant be lexed.
      */
     public Token[] lexInput() {
+        _tokens = [ ];
+
         while(!isAtEnd()) {
             _start = _current;
             scanToken();
         }
-
         _tokens ~= Token(TokenType.EOF, 0, _line);
         return _tokens;
     }
 
     /**
-     * Verify if the pointer reached the end of the file
+     * Verify if the current pointer reached the end of the file
      */
     private bool isAtEnd() {
         return _current >= _source.length;
     }
 
+    /**
+     * Advance current by one and returns the value than current where
+     * pointing before.
+     **/
     private char advance() {
         _current++;
         return _source[_current - 1];
     }
 
+    /**
+     * Verify if some char matches the current pointed char. Returns false
+     * and don't increase current if
+     * isAtEnd() is true, i.e., the current pointer reached the end of the file.
+     * Returns true and increase the current pointer otherwise.
+     */
     private bool match(char expected) {
         if(isAtEnd()) {
             return false;
@@ -63,6 +73,10 @@ class Lexer {
         return true;
     }
 
+    /**
+     * Returns the char pointed by current or EOF if it has reached the end of
+     * the file.
+     */
     private char peek() {
         if(isAtEnd()) {
             return '\0';
@@ -71,12 +85,19 @@ class Lexer {
         return _source[_current];
     }
 
+    /**
+     * Returns true if the char is a digit.
+     */
     private bool isDigit(const char c) {
         return c >= '0' && c <= '9';
     }
 
-    private void scanNumber(const char c) {
-        int _result = c - '0';
+    /**
+     * Scan all numbers starting from the _start pointer and adds a NUMBER
+     * Token at the end.
+     */
+    private void scanNumber() {
+        int _result = _source[_start] - '0';
         while(isDigit(peek())) {
             _result = 10 * _result + (_source[_current] - '0');
             advance();
@@ -85,6 +106,11 @@ class Lexer {
         addToken(TokenType.NUMBER, _result);
     }
 
+    /**
+     * scan the next Token in the source string, and add it to the tokens list.
+     * Throws:
+     *  <b>RuntimeError</b> if it finds a character than cant be lexed.
+     */
     private void scanToken() {
         const c = advance();
 
@@ -102,9 +128,10 @@ class Lexer {
             case '-': addToken(MINUS_SIGN); break;
             case '/': addToken(DIV_SIGN); break;
             case '0': .. case '9':
-                scanNumber(c);
+                scanNumber();
                 break;
 
+            // Ignore whitespaces
             case ' ': case '\t': break;
 
             case '\n':
@@ -112,10 +139,27 @@ class Lexer {
                 break;
 
             default:
-                throw new RuntimeError("Error while lexing.");
+                throw new LexingError(c, _line);
         }
     }
 
+    /**
+     * Adds a token to the _tokens list
+     */
+    private void addToken(TokenType type) {
+        _tokens ~= Token(type, 0, _line);
+    }
+
+    /**
+     * Adds a token to the _tokens list
+     */
+    private void addToken(TokenType type, int value) {
+        _tokens ~= Token(type, value, _line);
+    }
+
+    /**
+     * Returns the _tokens inside the lexer object as a string.
+     */
     override string toString() const {
         auto lex_string = "";
         int aline = 1;
@@ -125,6 +169,7 @@ class Lexer {
         for(int i = 1; i < _tokens.length; i++) {
             if(_tokens[i].line > aline) {
                 lex_string ~= '\n';
+                aline = _tokens[i].line;
             } else {
                 lex_string ~= ' ';
             }
@@ -132,13 +177,5 @@ class Lexer {
         }
 
         return lex_string;
-    }
-
-    private void addToken(TokenType type) {
-        _tokens ~= Token(type, 0, _line);
-    }
-
-    private void addToken(TokenType type, int value) {
-        _tokens ~= Token(type, value, _line);
     }
 }

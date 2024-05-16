@@ -1,4 +1,4 @@
-SRCS := main.d lexer/lexer.d lexer/token.d errors/errors.d utils/utils.d utils/stack.d parser/nodes.d parser/parser.d
+SRCS := main.d lexer/lexer.d lexer/token.d errors/errors.d utils/utils.d utils/stack.d parser/nodes.d parser/parser.d solver/solver.d
 OBJS := $(SRCS:.d=.o)
 
 main: $(SRCS)

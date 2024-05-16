@@ -3,6 +3,7 @@ module parser.parser;
 import parser.nodes;
 import stack;
 import lexer.token;
+import errors.errors;
 
 enum Act {
     // Shift
@@ -44,6 +45,9 @@ public struct ReduceEntry {
 
     /*[ SUM    , MINUS  , MUL    , DIV    , OPENPAR,
       CLOSPAR, POW,   , NUMBER , EOF     */
+/**
+ * All actions, in the form actTable|State||Symbol|.
+ */
 const Act[][] actTable = [
     [ Act.S05, Act.S04, Act.ERR, Act.ERR, Act.S08, /*00*/
     Act.ERR, Act.ERR, Act.S09, Act.ERR ],
@@ -95,6 +99,9 @@ const Act[][] actTable = [
     Act.R10, Act.R10, Act.ERR, Act.R10 ],
 ];
     /*S,      , E       , F       , G       , H       , I        */
+/**
+ * All goto actions, in the form gotoTable|State||Reduction|.
+ */
 const Goto[][] gotoTable = [
     [ Goto.ZZZ, Goto.G01, Goto.G02, Goto.G03, Goto.G06, Goto.G07 ], /*00*/
     [ Goto.ZZZ, Goto.ZZZ, Goto.ZZZ, Goto.ZZZ, Goto.ZZZ, Goto.ZZZ ], /*01*/
@@ -122,6 +129,10 @@ const Goto[][] gotoTable = [
     [ Goto.ZZZ, Goto.ZZZ, Goto.ZZZ, Goto.ZZZ, Goto.ZZZ, Goto.ZZZ ], /*23*/
 ];
 
+/**
+ * All reductions, each one associated
+ * with a specific rule from the grammar.
+ */
 const ReduceEntry[] reduceTable = [
     {Production.S, ReduceType.RED_TO_ROOT},
     {Production.E, ReduceType.RED_TO_BINARY},
@@ -141,17 +152,44 @@ const ReduceEntry[] reduceTable = [
 
 import std.stdio: writeln;
 
+/**
+ * The parser class. It receives a array of tokens and convert
+ * it to a Abstract Syntax Tree using the parserTokens() method.
+ * Params:
+ *  tokens = the list of Tokens to be parsed.
+ */
 public class Parser {
-    Stack!(Node*) symbols = new Stack!(Node*);
-    Stack!int states = new Stack!int;
-    Node* root = new Node(NodeType.ROOT, Production.S, Token(TokenType.EOF, 0, 0), null, null);
-    Token[] tokens = [];
+    private Stack!(Node*) symbols = new Stack!(Node*);
+    private Stack!int states = new Stack!int;
+    private Node* root = createRoot();
+    private Token[] tokens = [];
 
-    this(Token[] tokens) {
+    public this(Token[] tokens) {
         this.tokens = tokens;
     }
 
-    void parserTokens() {
+    /**
+     * The parser main function. It parsers the token array using the
+     * LALR parsing algorithm, where we use the tables definined
+     * to parsers the entry in the following way:
+     * 1. push the state 0 onto the states stack.
+     * 2. get the next item from the token list
+     * 3. get the action from the table using the state on the top
+     * of the stack and the symbol being read.
+     * 4. If the action is shiftX, push the state X onto the states stack and
+     * the symbol onto the symbol stack and then go back to 2.
+     * 5. If the action is a reductionX, pop symbols from the symbol
+     * stack in the same quantity of symbols and states than the left side from
+     * the X production from the gramar, create a node with this symbols and put
+     * the newly created node onto the symbol stack. Find the state described in
+     * the goto table using the right side of the production X and the state,
+     * put it onto the states stack and go back to 3.
+     * 6. If the action is a accept, the parsing is finished and we accept the
+     * input.
+     * 7. If the action is a error, the parsing is finished and we rejecet the
+     * input.
+     */
+    public Node* parserTokens() {
         states.push(0);
         Act nextStep = Act.ACC;
         int elemCounter = 0;
@@ -159,19 +197,22 @@ public class Parser {
         while(true) {
             elem = tokens[elemCounter];
             nextStep = actTable[states.peek()][cast(int)elem.type];
+
             if(nextStep == Act.ACC) {
                 root.type = NodeType.ROOT;
                 root.prod = Production.S;
                 root.right = symbols.pop();
+                return root;
                 break;
             }
-            if(nextStep == Act.ERR) {
-                throw new Exception("Error while parsing!");
-            }
-            if(cast(int)nextStep <= cast(int)Act.S23) {
 
+            if(nextStep == Act.ERR) {
+                throw new ParsingError(elem, elem.line);
+            }
+
+            if(cast(int)nextStep <= cast(int)Act.S23) {
                 states.push(cast(int*)nextStep);
-                Node* tNode = new Node(NodeType.TERMINAL, Production.S, elem, null, null);
+                Node* tNode = createTerminal(elem);
                 elemCounter += 1;
                 symbols.push(tNode);
             } else {
@@ -187,9 +228,8 @@ public class Parser {
                             states.pop();
                             Node* left = symbols.pop();
                             states.pop();
-                            Node* newNode = new Node(NodeType.BINARY, redType.prod, op.value, left, right);
+                            Node* newNode = createBinary(redType.prod, op.value, left, right);
                             symbols.push(newNode);
-
                         }
                         break;
 
@@ -197,8 +237,7 @@ public class Parser {
                         {
                             Node* right = symbols.pop();
                             states.pop();
-                            Node* newNode =
-                                new Node(NodeType.SINGLE, redType.prod, right.value, null, right);
+                            Node* newNode = createSingle(redType.prod, right);
                             symbols.push(newNode);
                         }
                         break;
@@ -211,26 +250,28 @@ public class Parser {
                             states.pop();
 
                             Node* newNode =
-                                new Node(NodeType.UNARY, redType.prod, op.value, null, right);
+                                createUnary(redType.prod, op.value, right);
                             symbols.push(newNode);
                         }
                         break;
 
                     case RED_TO_PAREXP:
                         {
-                            Node* rightPar = symbols.pop();
+                            symbols.pop();
                             states.pop();
                             Node* midNode = symbols.pop();
                             states.pop();
-                            Node* leftPar = symbols.pop();
+                            symbols.pop();
                             states.pop();
 
                             Node* newNode =
-                                new Node(NodeType.PAR_EXPR, redType.prod, rightPar.value, leftPar, midNode);
+                                createParExp(redType.prod, midNode);
                             symbols.push(newNode);
                         }
                         break;
                     default:
+                        // If the implentation is correct
+                        // this error is impossible.
                         throw new Exception("Unexpected error");
                 }
                 int newState = cast(int)gotoTable[cast(int)states.peek()][cast(int)redType.prod];
@@ -241,84 +282,70 @@ public class Parser {
 
 import std.conv: to;
 
+    /**
+     * Returns:
+     *  The Abstract Syntax Tree generated by the parser
+     *  as a string.
+     */
     override string toString() const {
-        string res = "";
-        res ~= to!string(root.prod);
-        res ~= "\n\\--";
-        res ~= printNode(root.right, "   ");
-        res ~= "\n";
-        return res;
+        return printNode(root, "");
     }
 
     private string printNode(const Node* node, const string prefix) const {
         if(node is null) {
             return "";
         }
-        string res = "";
         with(NodeType) switch (node.type) {
+            case ROOT:
+                return to!string(root.prod)
+                    ~ "\n+--"
+                    ~ printNode(root.right, "   ")
+                    ~ "\n";
             case BINARY:
-                {
-                    res ~= to!string(node.prod);
-                    res ~= "\n";
-                    res ~= prefix;
-                    res ~= "+--";
-                    res ~= printNode(node.left, prefix ~ "|  ");
-                    res ~= prefix;
-                    res ~= "+--";
-                    res ~= node.value.toString;
-                    res ~= "\n";
-                    res ~= prefix;
-                    res ~= "\\--";
-                    res ~= printNode(node.right, prefix ~ "   ");
-                    return res;
-                }
-                break;
+                return to!string(node.prod)
+                    ~ "\n"
+                    ~ prefix
+                    ~ "+--"
+                    ~ printNode(node.left, prefix ~ "|  ")
+                    ~ prefix
+                    ~ "+--"
+                    ~ node.value.toString
+                    ~ "\n"
+                    ~ prefix
+                    ~ "+--"
+                    ~ printNode(node.right, prefix ~ "   ");
             case UNARY:
-                {
-                    res ~= to!string(node.prod);
-                    res ~= "\n";
-                    res ~= prefix;
-                    res ~= "+--";
-                    res ~= node.value.toString();
-                    res ~= "\n";
-                    res ~= prefix;
-                    res ~= "\\--";
-                    res ~= printNode(node.right, prefix ~ "   ");
-                    return res;
-                }
-                break;
+                return to!string(node.prod)
+                    ~ "\n"
+                    ~ prefix
+                    ~ "+--"
+                    ~ node.value.toString()
+                    ~ "\n"
+                    ~ prefix
+                    ~ "+--"
+                    ~ printNode(node.right, prefix ~ "   ");
             case PAR_EXPR:
-                {
-                    res ~= to!string(node.prod);
-                    res ~= "\n";
-                    res ~= prefix;
-                    res ~= "+--(\n";
-                    res ~= prefix;
-                    res ~= "+--";
-                    res ~= printNode(node.right, prefix ~ "|  ");
-                    res ~= prefix;
-                    res ~= "\\--)\n";
-                    return res;
-                }
-                break;
+                return to!string(node.prod)
+                    ~ "\n"
+                    ~ prefix
+                    ~ "+--(\n"
+                    ~ prefix
+                    ~ "+--"
+                    ~ printNode(node.right, prefix ~ "|  ")
+                    ~ prefix
+                    ~ "+--)\n";
             case SINGLE:
-                {
-                    res ~= to!string(node.prod);
-                    res ~= "\n";
-                    res ~= prefix;
-                    res ~= "\\--";
-                    res ~= printNode(node.right, prefix ~ "   ");
-                    return res;
-                }
-                break;
+                return to!string(node.prod)
+                    ~ "\n"
+                    ~ prefix
+                    ~ "+--"
+                    ~ printNode(node.right, prefix ~ "   ");
             case TERMINAL:
-                {
-                    res ~= node.value.toString();
-                    res ~= "\n";
-                    return res;
-                }
-                break;
+                return node.value.toString()
+                    ~ "\n";
             default:
+                // If the implentation is correct
+                // this error is impossible.
                 return "error while printing";
         }
     }

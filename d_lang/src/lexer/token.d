@@ -4,6 +4,16 @@ import std.conv: to;
 
 /**
  * A type from a token
+ * It can be
+ * - SUM_SIGN, '+'
+ * - MINUS_SIGN, '-'
+ * - MUL_SIGN, '*'
+ * - DIV_SIGN, '/'
+ * - LEFT_PAREN, '('
+ * - RIGHT_PAREN, ')'
+ * - POW_SIGN, '**'
+ * - NUMBER, \[0-9\]+
+ * - EOF
  */
 enum TokenType {
     // Single char

@@ -5,7 +5,7 @@ import std.stdio: writeln;
 void main(string[] args) {
     if (args.length > 2)
     {
-        writeln("Usage: deelox <script>");
+        writeln("Usage: ./main.out <script>");
     }
     else if (args.length == 2)
     {
