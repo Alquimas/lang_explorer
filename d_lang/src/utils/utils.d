@@ -15,6 +15,7 @@ public static void runFile(const string file) {
     auto source = readText(file);
     Lexer lexed = new Lexer(source);
     try {
+        // TODO: solve the display bug
         Token[] tokens = lexed.lexInput();
         writeln("\nThe file after the lexing is: \n\n"
         ~ lexed.toString());
@@ -42,6 +43,7 @@ public static void runRepl() {
         write("> ");
         Lexer lexed = new Lexer(readln());
         try {
+            // TODO: solve the C-d infinity loop bug
             Token[] tokens = lexed.lexInput();
             writeln("\nThe string after the lexing is: \n\n"
                     ~ lexed.toString());
